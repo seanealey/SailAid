@@ -22,6 +22,9 @@
 #define LORA_FIX_LENGTH_PAYLOAD_ON                  false
 #define LORA_IQ_INVERSION_ON                        false
 
+#define RX_TIMEOUT_VALUE                            1000
+#define BUFFER_SIZE                                 30 // Define the payload size here
+
 char txpacket[BUFFER_SIZE];
 char rxpacket[BUFFER_SIZE];
 
@@ -34,8 +37,19 @@ typedef enum
 {
     LOWPOWER,
     STATE_RX,
-    STATE_TX
+    STATE_TX, 
+    GPS_READ,
+    DATA_ANALYSE
 }States_t;
+
+// buoy gets gps location then transmits it via LoRa when available
+// boat listens for gps signal from buoy, calculates distance to buoy
+typedef enum
+{
+    BOAT,
+    BUOY
+}Objects_t;
+
 
 int16_t txNumber;
 States_t state;
@@ -44,6 +58,10 @@ int16_t Rssi,rxSize;
 
 
 //gps config
+
+double sat_lat;
+double sat_lon;
+
 
 TinyGPSPlus GPS;
 #define VGNSS_CTRL 3
@@ -138,12 +156,22 @@ void gpsRead()
 	}
 }
 
+void calculateDistance()
+{
+  double dist = GPS.distanceBetween(sat_lat, sat_lon, GPS.location.lat(), GPS.location.lng());
+  Serial.print("distance: ");
+  Serial.print(dist);
+
+  state=GPS_READ;
+}
 
 void setup() {
   loraConfig();
   Serial.println("Lora configured");
   gpsConfig();
   Serial.println("GPS configured");
+  object=BOAT;
+  state=GPS_READ;
 
 }
 
@@ -166,10 +194,36 @@ void loop() {
     case LOWPOWER:
       Radio.IrqProcess( );
       break;
+    case GPS_READ:
+      Serial.printf("reading gps signal...");
+      gpsRead();
+      state=DATA_ANALYSE;
+      break;
+    case DATA_ANALYSE:
+      Serial.printf("calculating distance...");
+      calculateDistance();
+
     default:
       break;
   }
 
 }
 
+void run()
+{
+  switch(object)
+  {
+    case BOAT:
+
+      break;
+    case BUOY:
+      gpsRead();
+      lora
+      break;
+    default:
+      break;
+  }
+}
+
+// 
 
