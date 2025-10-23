@@ -125,20 +125,16 @@ void parseInstructionToPlays(const std::string &sentence, Player &player) {
     }
 }
 
-// This is the big daddy function that takes boat and buoy GPS coordinates and plays the audio instruction. Remove cout debugs if you want.
-void playBuoyInstruction(const GPSCoords &boat, const GPSCoords &buoy, Player &player) {
-    // Calculate bearing and distance
-    double bearing = calculateTrueBearing(boat, buoy);
-    int distance = calculateDistance(boat, buoy);
-    
-    std::cout << "[DEBUG] Bearing: " << bearing << "°, Distance: " << distance << "m\n";
-    
+// This is the big daddy function that takes a bearing and distance to the buoy and plays the audio instruction. Remove cout debugs if you want.
+void playBuoyInstruction(double bearingToBuoy, int distance, Player &player) {
+    std::cout << "[DEBUG] Bearing: " << bearingToBuoy << "°, Distance: " << distance << "m\n";
+
     // Construct the sentence
-    std::string sentence = constructSentence(bearing, distance);
-    
+    std::string sentence = constructSentence(bearingToBuoy, distance);
+
     std::cout << "[DEBUG] Instruction: " << sentence << "\n";
     std::cout << "[DEBUG] Audio plays:\n";
-    
+
     // Parse and play
     parseInstructionToPlays(sentence, player);
 }
@@ -146,21 +142,27 @@ void playBuoyInstruction(const GPSCoords &boat, const GPSCoords &buoy, Player &p
 // --- Demo ---
 int main() {
     Player player;
-    
+
     std::cout << "=== Test 1: ===\n";
     GPSCoords boat1 = {0.0, 0.0};
     GPSCoords buoy1 = {0.00065, 0.00855};
-    playBuoyInstruction(boat1, buoy1, player);
-    
+    double bearing1 = calculateTrueBearing(boat1, buoy1);
+    int distance1 = calculateDistance(boat1, buoy1);
+    playBuoyInstruction(bearing1, distance1, player);
+
     std::cout << "\n=== Test 2: ===\n";
     GPSCoords boat2 = {0.0, 0.0};
-    GPSCoords buoy2 = {0.00045, 0.00004}; 
-    playBuoyInstruction(boat2, buoy2, player);
-    
+    GPSCoords buoy2 = {0.00045, 0.00004};
+    double bearing2 = calculateTrueBearing(boat2, buoy2);
+    int distance2 = calculateDistance(boat2, buoy2);
+    playBuoyInstruction(bearing2, distance2, player);
+
     std::cout << "\n=== Test 3: ===\n";
     GPSCoords boat3 = {0.0, 0.0};
     GPSCoords buoy3 = {-0.00193, 0.0};
-    playBuoyInstruction(boat3, buoy3, player);
-    
+    double bearing3 = calculateTrueBearing(boat3, buoy3);
+    int distance3 = calculateDistance(boat3, buoy3);
+    playBuoyInstruction(bearing3, distance3, player);
+
     return 0;
 }

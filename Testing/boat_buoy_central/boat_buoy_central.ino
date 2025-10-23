@@ -5,6 +5,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_HMC5883_U.h>
 #include <math.h>
+#include <DFRobotDFPlayerMini.h>
+#include "playBuoyInstruction.h"
 
 // ---------------- Node Role ----------------
 typedef enum { BOAT, BUOY, CENTRAL } Role_t;
@@ -90,6 +92,29 @@ void buzzerInit() {
 
 void buzzOn()  { digitalWrite(BUZZER_PIN, HIGH); Serial.println("Buzzer ON"); }
 void buzzOff() { digitalWrite(BUZZER_PIN, LOW);  Serial.println("Buzzer OFF"); }
+
+// ---------------- DFPlayer Mini ----------------
+#define DFPLAYER_RX 33   // DFPlayer TX -> ESP32 RX
+#define DFPLAYER_TX 34   // DFPlayer RX -> ESP32 TX
+
+HardwareSerial mp3Serial(1);
+DFRobotDFPlayerMini myDFPlayer;
+
+void dfPlayerInit() {
+  mp3Serial.begin(9600, SERIAL_8N1, DFPLAYER_RX, DFPLAYER_TX);
+
+  Serial.println("Initializing DFPlayer module...");
+
+  if (!myDFPlayer.begin(mp3Serial)) {
+    Serial.println("⚠️ DFPlayer not initialized: check wiring and SD card");
+    // Continue anyway - don't block if audio fails
+  } else {
+    Serial.println("DFPlayer ready");
+    myDFPlayer.setTimeOut(500);
+    myDFPlayer.volume(20);  // 0-30
+    myDFPlayer.EQ(DFPLAYER_EQ_NORMAL);
+  }
+}
 
 // ---------------- Fleet Table ----------------
 struct NodeData {
@@ -267,6 +292,7 @@ void setup() {
   loraConfig();
   gpsConfig();
   buzzerInit();
+  dfPlayerInit();
   if (ROLE == CENTRAL) scheduleNextCentralTx();
   else scheduleNextNodeTx();
 }
@@ -377,25 +403,13 @@ void compass() {
     // 3) Compute bearing from boat -> buoy using boat's GPS (my_lat/my_lon)
     double bearingToBuoy = calculateBearing(my_lat, my_lon, buoyLat, buoyLon); // 0..360
 
-    // 4) Compute shortest turn (bearing - heading) normalized to [-180,180]
-    double turn = normalize180(bearingToBuoy - headingDegrees);
+    // 4) Calculate distance to buoy
+    int distance = (int)bestDist; // Convert from double to int (meters)
 
-    // 5) Build a simple instruction
-    const double ON_COURSE_THRESHOLD = 5.0; // degrees considered "on course"
-    String turnInstruction;
-    double turnAngle = fabs(turn);
+    // 5) Call playBuoyInstruction with bearing and distance
+    playBuoyInstruction(bearingToBuoy, distance);
 
-    if (turnAngle <= ON_COURSE_THRESHOLD) {
-      turnInstruction = "On course";
-    } else if (turn > 0) {
-      // positive -> turn RIGHT (clockwise)
-      turnInstruction = "Turn RIGHT " + String(turnAngle, 1) + " deg";
-    } else {
-      // negative -> turn LEFT (anticlockwise)
-      turnInstruction = "Turn LEFT " + String(turnAngle, 1) + " deg";
-    }
-
-    // 6) Print results
+    // 6) Print results for debugging
     Serial.print("Compass Heading: ");
     Serial.print(headingDegrees, 1);
     Serial.println(" deg");
@@ -403,13 +417,6 @@ void compass() {
     Serial.print("Bearing to Buoy: ");
     Serial.print(bearingToBuoy, 1);
     Serial.println(" deg");
-
-    Serial.print("Shortest Turn: ");
-    Serial.print(turn, 1);
-    Serial.println(" deg  (positive=right, negative=left)");
-
-    Serial.print("Instruction: ");
-    Serial.println(turnInstruction);
 
     Serial.println("-----------------------------");
   }
