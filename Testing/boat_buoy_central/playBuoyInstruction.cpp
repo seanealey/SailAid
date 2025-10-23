@@ -31,39 +31,97 @@ int getAudioId(const char* key) {
     return -1; // Not found
 }
 
-// Helper to play audio by ID using DFPlayer Mini
-void playAudio(int id) {
-    Serial.print("Playing audio ID: ");
-    Serial.println(id);
+// ============ Non-blocking Audio Playback System ============
 
-    myDFPlayer.play(id);
+#define MAX_AUDIO_QUEUE 20
+int audioQueue[MAX_AUDIO_QUEUE];
+int queueSize = 0;
+int currentQueueIndex = 0;
+unsigned long lastAudioTime = 0;
+const unsigned long AUDIO_DELAY = 800; // ms between audio files
+bool isPlaying = false;
 
-    // Wait for audio to finish playing
-    // Adjust delay based on your audio file lengths
-    // Most number/word clips are ~500-1000ms
-    delay(800);
+// Add audio ID to the queue
+void queueAudio(int id) {
+    if (queueSize < MAX_AUDIO_QUEUE) {
+        audioQueue[queueSize++] = id;
+    }
 }
 
-// Play a number as audio tokens
-void playNumber(int num) {
+// Clear the audio queue
+void clearAudioQueue() {
+    queueSize = 0;
+    currentQueueIndex = 0;
+    isPlaying = false;
+}
+
+// Process audio queue (call this in loop())
+void processAudioQueue() {
+    if (!isPlaying || currentQueueIndex >= queueSize) {
+        return; // Nothing to play
+    }
+
+    unsigned long currentTime = millis();
+
+    // Check if enough time has passed since last audio
+    if (currentTime - lastAudioTime >= AUDIO_DELAY) {
+        int audioId = audioQueue[currentQueueIndex];
+
+        Serial.print("Playing audio ID: ");
+        Serial.println(audioId);
+
+        myDFPlayer.play(audioId);
+
+        lastAudioTime = currentTime;
+        currentQueueIndex++;
+
+        // Check if we finished the queue
+        if (currentQueueIndex >= queueSize) {
+            Serial.println("Audio sequence complete");
+            clearAudioQueue();
+        }
+    }
+}
+
+// Start playing the queued audio
+void startAudioPlayback() {
+    if (queueSize > 0) {
+        isPlaying = true;
+        currentQueueIndex = 0;
+        lastAudioTime = millis() - AUDIO_DELAY; // Start immediately
+        Serial.print("Starting audio sequence with ");
+        Serial.print(queueSize);
+        Serial.println(" clips");
+    }
+}
+
+// Check if audio is currently playing
+bool isAudioPlaying() {
+    return isPlaying && currentQueueIndex < queueSize;
+}
+
+// ============ Audio Queue Builders ============
+
+// Queue a number
+void queueNumber(int num) {
     char buffer[10];
     itoa(num, buffer, 10);
     int audioId = getAudioId(buffer);
     if (audioId != -1) {
-        playAudio(audioId);
+        queueAudio(audioId);
     }
 }
 
-// Play a word as audio token
-void playWord(const char* word) {
+// Queue a word
+void queueWord(const char* word) {
     int audioId = getAudioId(word);
     if (audioId != -1) {
-        playAudio(audioId);
+        queueAudio(audioId);
     }
 }
 
-// Decompose distance into audio tokens and play them
-void playDistance(int distance) {
+// Queue distance as decomposed audio tokens
+void queueDistance(int distance) {
     if (distance <= 0) return;
 
     // Round to nearest 5 meters
@@ -73,33 +131,77 @@ void playDistance(int distance) {
     int remainder = distance % 100;
 
     if (hundreds > 0) {
-        playNumber(hundreds);
-        playWord("HUNDRED");
+        queueNumber(hundreds);
+        queueWord("HUNDRED");
         if (remainder > 0) {
-            playWord("AND");
+            queueWord("AND");
         }
     }
 
     // Check if remainder is 15 (special case with its own audio)
     if (remainder == 15) {
-        playNumber(15);
+        queueNumber(15);
     } else {
         int tens = (remainder / 10) * 10;
         int ones = remainder % 10;
 
         if (tens > 0) {
-            playNumber(tens);
+            queueNumber(tens);
         }
         if (ones > 0) {
-            playNumber(ones);
+            queueNumber(ones);
         }
     }
 
-    playWord("METRES");
+    queueWord("METRES");
 }
+
+// ============ Throttling System ============
+
+double lastBearing = -999;
+int lastDistance = -999;
+unsigned long lastInstructionTime = 0;
+const unsigned long INSTRUCTION_COOLDOWN = 10000; // 10 seconds minimum between instructions
+const double BEARING_THRESHOLD = 15.0; // degrees
+const int DISTANCE_THRESHOLD = 10; // meters
+
+bool shouldPlayInstruction(double bearingToBuoy, int distance) {
+    unsigned long currentTime = millis();
+
+    // Don't play if already playing
+    if (isAudioPlaying()) {
+        return false;
+    }
+
+    // Check if enough time has passed
+    if (currentTime - lastInstructionTime < INSTRUCTION_COOLDOWN) {
+        return false;
+    }
+
+    // Check if bearing or distance changed significantly
+    bool bearingChanged = fabs(bearingToBuoy - lastBearing) > BEARING_THRESHOLD;
+    bool distanceChanged = abs(distance - lastDistance) > DISTANCE_THRESHOLD;
+
+    // First time or significant change
+    if (lastBearing < -900 || bearingChanged || distanceChanged) {
+        lastBearing = bearingToBuoy;
+        lastDistance = distance;
+        lastInstructionTime = currentTime;
+        return true;
+    }
+
+    return false;
+}
+
+// ============ Main Function ============
 
 // Main function to play buoy instruction based on bearing and distance
 void playBuoyInstruction(double bearingToBuoy, int distance) {
+    // Check if we should play (throttling)
+    if (!shouldPlayInstruction(bearingToBuoy, distance)) {
+        return; // Skip this call
+    }
+
     // Convert bearing (0-360 degrees) to clock direction (1-12)
     int clockDirection = (int)round(bearingToBuoy / 30.0);
     if (clockDirection == 0) {
@@ -107,24 +209,26 @@ void playBuoyInstruction(double bearingToBuoy, int distance) {
     }
 
     // Debug output
-    Serial.print("[DEBUG] Bearing: ");
+    Serial.print("[AUDIO] Bearing: ");
     Serial.print(bearingToBuoy, 1);
     Serial.print("°, Distance: ");
     Serial.print(distance);
     Serial.println("m");
 
-    Serial.print("[DEBUG] Clock direction: ");
+    Serial.print("[AUDIO] Clock direction: ");
     Serial.print(clockDirection);
     Serial.print(" o'clock, Rounded distance: ");
     Serial.print(((distance + 2) / 5) * 5);
     Serial.println("m");
 
-    Serial.println("[DEBUG] Audio sequence:");
+    // Clear any existing queue and build new instruction
+    clearAudioQueue();
 
-    // Play the instruction: "[clock] OCLOCK [distance] METRES"
-    playNumber(clockDirection);
-    playWord("OCLOCK");
-    playDistance(distance);
+    // Queue the instruction: "[clock] OCLOCK [distance] METRES"
+    queueNumber(clockDirection);
+    queueWord("OCLOCK");
+    queueDistance(distance);
 
-    Serial.println("[DEBUG] Audio sequence complete");
+    // Start playback
+    startAudioPlayback();
 }

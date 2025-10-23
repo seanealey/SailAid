@@ -266,7 +266,7 @@ void checkDistances() {
 // ---------------- Setup ----------------
 void loraConfig() {
   Serial.begin(115200);
-  wire.begin(16,17) //SDA = 16, SCL = 17
+  Wire.begin(16,17); //SDA = 16, SCL = 17
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   RadioEvents.TxDone = OnTxDone;
@@ -301,6 +301,7 @@ void setup() {
 void loop() {
   gpsReadNonBlocking();
   compass();
+  processAudioQueue(); // Process non-blocking audio playback
 
   if ((ROLE == BOAT || ROLE == BUOY) && millis() >= nextTx) {
     if (gps_fix) {
