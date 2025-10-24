@@ -38,7 +38,7 @@ typedef enum
 } Objects_t;
 
 States_t state;
-Objects_t object = BUOY; // ⚡ Change to BUOY when flashing the buoy
+Objects_t object = BOAT; // ⚡ Change to BUOY when flashing the buoy
 
 int16_t txNumber;
 int16_t Rssi, rxSize;

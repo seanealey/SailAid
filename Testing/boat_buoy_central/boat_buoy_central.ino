@@ -4,8 +4,8 @@
 
 // ---------------- Node Role ----------------
 typedef enum { BOAT, BUOY, CENTRAL } Role_t;
-#define ROLE CENTRAL    // ⚡ Change to BOAT / BUOY / CENTRAL
-#define NODE_ID 101     // unique ID per node (100+ boats, 200+ buoys)
+#define ROLE BUOY    // ⚡ Change to BOAT / BUOY / CENTRAL
+#define NODE_ID 201     // unique ID per node (100+ boats, 200+ buoys)
 #define CENTRAL_ID 3
 // ---------------- LoRa Config ----------------
 #define RF_FREQUENCY 915000000
@@ -74,15 +74,19 @@ void gpsReadNonBlocking() {
 }
 
 // ---------------- Buzzer ----------------
-#define BUZZER_PIN 2
+#define BUZZER_PIN 7
 
 void buzzerInit() {
   pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);
+  //digitalWrite(BUZZER_PIN, LOW);
+  noTone(BUZZER_PIN);
 }
 
-void buzzOn()  { digitalWrite(BUZZER_PIN, HIGH); Serial.println("Buzzer ON"); }
-void buzzOff() { digitalWrite(BUZZER_PIN, LOW);  Serial.println("Buzzer OFF"); }
+//void buzzOn()  { digitalWrite(BUZZER_PIN, HIGH); Serial.println("Buzzer ON"); }
+//void buzzOff() { digitalWrite(BUZZER_PIN, LOW);  Serial.println("Buzzer OFF"); }
+
+void buzzOn()  { tone(BUZZER_PIN,1000); Serial.println("Buzzer ON"); }
+void buzzOff() { noTone(BUZZER_PIN);;  Serial.println("Buzzer OFF"); }
 
 // ---------------- Fleet Table ----------------
 struct NodeData {
