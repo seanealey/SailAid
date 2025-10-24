@@ -8,7 +8,7 @@
 // ------------- LoRa Config -------------
 #define RF_FREQUENCY 915000000
 #define TX_OUTPUT_POWER 20
-#define LORA_BANDWIDTH 0 // 125 kHz
+#define LORA_BANDWIDTH 1 // 125 kHz
 #define LORA_SPREADING_FACTOR 7
 #define LORA_CODINGRATE 1
 #define LORA_PREAMBLE_LENGTH 8
@@ -23,7 +23,7 @@ char rxpacket[BUFFER_SIZE];
 static RadioEvents_t RadioEvents;
 
 // ------------- Scheduling -------------
-const unsigned long baseInterval = 5000; // 5 s cycle
+const unsigned long baseInterval = 2000; // 2 s cycle
 unsigned long nextCentralTx = 0;
 
 void scheduleNextCentralTx()
