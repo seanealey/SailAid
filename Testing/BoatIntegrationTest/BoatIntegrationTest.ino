@@ -81,12 +81,37 @@ static int calculateDistance(GPSCoords from, GPSCoords to){
 
 // -------------------- Compass --------------------
 static bool initCompass(){
-  // Adjust SDA/SCL to your Heltec pins if needed
-  Wire.begin(/*SDA=*/21, /*SCL=*/22);
-  if (!mag.begin()) {
-    Serial.println("HMC5883 not detected. Check wiring.");
+  Serial.println("Checking I2C devices...");
+  
+  // Use pins 33 and 34 for Heltec Wireless Tracker
+  Wire.begin(16, 17);  // SDA=33, SCL=34
+  
+  Wire.setClock(100000);  // Standard I2C speed
+  
+  // Scan for I2C devices
+  Serial.println("Scanning I2C bus on pins 33/34...");
+  byte count = 0;
+  for(byte addr = 1; addr < 127; addr++) {
+    Wire.beginTransmission(addr);
+    byte error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.print("I2C device found at 0x");
+      Serial.println(addr, HEX);
+      count++;
+    }
+  }
+  
+  if (count == 0) {
+    Serial.println("No I2C devices found on pins 33/34!");
     return false;
   }
+  
+  Serial.println("Attempting HMC5883 init...");
+  if (!mag.begin()) {
+    Serial.println("HMC5883 not detected!");
+    return false;
+  }
+  Serial.println("HMC5883 initialized OK");
   return true;
 }
 
@@ -142,12 +167,12 @@ static inline void dfpWaitForIdle (uint16_t ms = 380) { delay(ms); }
 // Use this instead of dfp.play(...)
 static inline void playToken(uint16_t id, const char* label=nullptr) {
   if (!label) label = "";
-  Serial.printf("[DFP] REQUEST        id=%u  %s\n", id, label);
+  // Serial.printf("[DFP] REQUEST        id=%u  %s\n", id, label);
   dfp.play(id);            // If your files are in /mp3/0001.mp3, you can switch to dfp.playMp3Folder(id)
   dfpWaitForStart();
-  dfpLogNow("after start");
+  // dfpLogNow("after start");
   dfpWaitForIdle();
-  dfpLogNow("after idle ");
+  // dfpLogNow("after idle ");
 }
 
 // -------------------- Helpers --------------------
@@ -225,15 +250,19 @@ void setTargetBuoy(double lat, double lon) {
 // -------------------- Setup/Loop --------------------
 void setup(){
   Serial.begin(115200);
-
+  delay(100);  // Add small delay
+  Serial.println("=== BOAT NAV STARTING ===");
+  
   // DFPlayer
+  Serial.println("Initializing DFPlayer...");
   mp3Serial.begin(9600, SERIAL_8N1, DFPLAYER_RX, DFPLAYER_TX);
   delay(300);
   if (!dfp.begin(mp3Serial)) {
-    Serial.println("DFPlayer init failed.");
+    Serial.println("ERROR: DFPlayer init failed!");
   } else {
+    Serial.println("DFPlayer OK");
     dfp.setTimeOut(500);
-    dfp.volume(12);
+    dfp.volume(5);
     dfp.EQ(DFPLAYER_EQ_NORMAL);
     dfpLogNow("boot");
     playToken(A_POWER, "POWER");
@@ -241,43 +270,136 @@ void setup(){
   }
 
   // Compass
-  (void) initCompass();
+  Serial.println("Initializing Compass...");
+  if (initCompass()) {
+    Serial.println("Compass OK");
+  } else {
+    Serial.println("Compass FAILED");
+  }
 
-  // Test target (~1 km NE)
+  // Test target
+  Serial.println("Setting target buoy...");
   setTargetBuoy(-33.8480, 151.2100);
+  Serial.println("=== SETUP COMPLETE ===");
+
+  
 }
 
 void loop(){
-  // Sensors
+  static unsigned long loopCounter = 0;
+  static unsigned long lastPrint = 0;
+  
+  // Print loop counter every second
+  if (millis() - lastPrint > 1000) {
+    Serial.print("Loop running: ");
+    Serial.println(++loopCounter);
+    lastPrint = millis();
+  }
+  
+  // Manual trigger with 't' key
+  if (Serial.available()) {
+    char cmd = Serial.read();
+    if (cmd == 't' || cmd == 'T') {
+      Serial.println("\n=== MANUAL TRIGGER ===");
+      
+      // Make sure we have valid data
+      if (hasTarget && !isnan(boat.latitude) && !isnan(boat.longitude)) {
+        double bearing = calculateTrueBearing(boat, buoy);
+        int distanceM = calculateDistance(boat, buoy);
+        int clockHr = bearingToClock(bearing);
+        
+        // Get current compass heading for relative bearing
+        float headingDeg = readBoatHeadingDeg();
+        double relativeBearing = shortestTurnDeg(bearing, headingDeg);
+        
+        // Print debug info
+        // Serial.printf("Boat Position: %.4f, %.4f\n", boat.latitude, boat.longitude);
+        // Serial.printf("Buoy Position: %.4f, %.4f\n", buoy.latitude, buoy.longitude);
+        // Serial.printf("True Bearing: %.1f°\n", bearing);
+        // Serial.printf("Boat Heading: %.1f°\n", headingDeg);
+        Serial.printf("Relative Turn: %.1f°\n", relativeBearing);
+        // Serial.printf("Clock Position: %d o'clock\n", clockHr);
+        // Serial.printf("Distance: %d metres\n", distanceM);
+        // Serial.println("Speaking announcement...");
+        
+        speakClockAndDistance(clockHr, distanceM);
+        
+        // Reset the automatic timer so it doesn't immediately speak again
+        lastAnnounceMs = millis();
+        lastClock = (float)clockHr;
+        lastDistance = distanceM;
+      } else {
+        Serial.println("No target set or invalid GPS!");
+      }
+      Serial.println("===================\n");
+    }
+    else if (cmd == 'h' || cmd == 'H') {
+      // Help menu
+      Serial.println("\n=== COMMANDS ===");
+      Serial.println("t - Trigger navigation announcement");
+      Serial.println("h - Show this help");
+      Serial.println("1-8 - Set target direction (1=N, 3=E, 5=S, 7=W)");
+      Serial.println("v - Increase volume");
+      Serial.println("q - Decrease volume");
+      Serial.println("================\n");
+    }
+    else if (cmd >= '1' && cmd <= '8') {
+      // Quick target changes for testing
+      switch(cmd) {
+        case '1': setTargetBuoy(-33.8400, 151.2000); Serial.println("Target: North"); break;
+        case '2': setTargetBuoy(-33.8450, 151.2050); Serial.println("Target: NE"); break;
+        case '3': setTargetBuoy(-33.8500, 151.2100); Serial.println("Target: East"); break;
+        case '4': setTargetBuoy(-33.8550, 151.2050); Serial.println("Target: SE"); break;
+        case '5': setTargetBuoy(-33.8600, 151.2000); Serial.println("Target: South"); break;
+        case '6': setTargetBuoy(-33.8550, 151.1950); Serial.println("Target: SW"); break;
+        case '7': setTargetBuoy(-33.8500, 151.1900); Serial.println("Target: West"); break;
+        case '8': setTargetBuoy(-33.8450, 151.1950); Serial.println("Target: NW"); break;
+      }
+    }
+    else if (cmd == 'v' || cmd == 'V') {
+      dfp.volumeUp();
+      Serial.println("Volume increased");
+    }
+    else if (cmd == 'q' || cmd == 'Q') {
+      dfp.volumeDown();
+      Serial.println("Volume decreased");
+    }
+  }
+  
+  // Read sensors
   (void) readBoatGPS(boat);
-  float headingDeg = readBoatHeadingDeg(); // prints at 1 Hz
+  float headingDeg = readBoatHeadingDeg(); // This prints every 1 second
 
-  // Target logic
+  // Check if we have valid target
   if (!hasTarget || isnan(boat.latitude) || isnan(boat.longitude)) {
     delay(20);
     return;
   }
 
-  // Guidance
+  // NEW CODE:
   double bearing = calculateTrueBearing(boat, buoy);
-  int distanceM  = calculateDistance(boat, buoy);
-  int clockHr    = bearingToClock(bearing);
+  int distanceM = calculateDistance(boat, buoy);
 
-  // (Optional relative turn calculation for future use)
-  if (!isnan(headingDeg)) {
-    double turn = shortestTurnDeg(bearing, headingDeg);
-    (void)turn;
-  }
+  // Calculate relative bearing
+  double relativeBearing = bearing - headingDeg;
+  // Normalize to -180 to +180
+  while (relativeBearing > 180) relativeBearing -= 360;
+  while (relativeBearing < -180) relativeBearing += 360;
 
-  // Rate-limited speech
+  // For clock position, need 0-360
+  double clockBearing = relativeBearing;
+  if (clockBearing < 0) clockBearing += 360;
+  int clockHr = bearingToClock(clockBearing);  // Now uses relative!
+
+  // Automatic announcements (every 7 seconds or on significant change)
   unsigned long now = millis();
-  bool enoughTime   = (now - lastAnnounceMs) >= ANNOUNCE_PERIOD_MS;
+  bool enoughTime = (now - lastAnnounceMs) >= ANNOUNCE_PERIOD_MS;
   bool changedClock = (isnan(lastClock) || fabs(lastClock - clockHr) >= MIN_CLOCK_DELTA);
-  bool changedDist  = (lastDistance < 0 || abs(lastDistance - distanceM) >= MIN_DISTANCE_DELTA);
+  bool changedDist = (lastDistance < 0 || abs(lastDistance - distanceM) >= MIN_DISTANCE_DELTA);
 
   if (enoughTime || changedClock || changedDist) {
-    Serial.printf("[GUIDE] bearing=%.1f deg  clock=%d  dist=%d m\n",
-                  bearing, clockHr, distanceM);
+    // Serial.println("\n[AUTO ANNOUNCE]");
+    // Serial.printf("Clock: %d, Distance: %d metres\n\n", clockHr, distanceM);
     speakClockAndDistance(clockHr, distanceM);
     lastAnnounceMs = now;
     lastClock = (float)clockHr;
