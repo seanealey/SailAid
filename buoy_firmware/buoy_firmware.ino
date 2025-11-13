@@ -166,7 +166,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr)
 }
 
 // ------------- Distance Checks (Buoy) -------------
-#define BUOY_ALERT_RANGE 50.0
+#define BUOY_ALERT_RANGE 20.0
 #define HYSTERESIS 2.0
 static bool buzzerState = false;
 

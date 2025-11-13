@@ -3,7 +3,7 @@
 #include "Arduino.h"
 
 // ------------- Central Identity -------------
-#define CENTRAL_ID 3
+#define CENTRAL_ID 301
 
 // ------------- LoRa Config -------------
 #define RF_FREQUENCY 915000000
