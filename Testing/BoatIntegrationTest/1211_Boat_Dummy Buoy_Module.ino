@@ -161,8 +161,8 @@ static void dfpLogNow(const char* tag) {
 }
 
 // Simple timing gaps without BUSY pin (keeps tokens from colliding)
-static inline void dfpWaitForStart(uint16_t ms = 200) { delay(ms); }
-static inline void dfpWaitForIdle (uint16_t ms = 380) { delay(ms); }
+static inline void dfpWaitForStart(uint16_t ms = 300) { delay(ms); }
+static inline void dfpWaitForIdle (uint16_t ms = 600) { delay(ms); }
 
 // Use this instead of dfp.play(...)
 static inline void playToken(uint16_t id, const char* label=nullptr) {
